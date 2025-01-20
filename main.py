@@ -5,6 +5,8 @@ from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_huggingface import HuggingFaceEmbeddings
 from app.chains.system_chain import SystemChain, SystemTools
 from app.chains.chatbot_chain import ChatbotChain
+from app.chains.file_management_chain import FileManagementChain
+from app.services.file_service import FileService
 from dotenv import load_dotenv
 from langchain.agents import AgentExecutor, create_structured_chat_agent
 import os
@@ -35,12 +37,16 @@ class RouterChain:
             self.llm = GPT4All(model=model_path, temperature=0)
 
         self.tools = SystemTools()
+        self.file_service = FileService(root_dir=".")
+        self.file_management_chain = FileManagementChain(prompt)
+
         self.setup_templates_and_tools()
 
     def setup_templates_and_tools(self):
         self.prompt_templates = [
             SystemChain(self.prompt).get_template(),
-            ChatbotChain(self.prompt).get_template()
+            ChatbotChain(self.prompt).get_template(),
+            FileManagementChain(self.prompt).get_template()
         ]
         self.tools_list = [
             self.tools.turn_on_wifi_tool,
@@ -58,9 +64,12 @@ class RouterChain:
         if most_similar_idx == 0:
             print("Using System")
             return "system"
-        else:
+        elif:
             print("Using Chatbot")
             return "chatbot"
+        else:
+            print("Using File Management")
+            return "file_management"
 
     def execute(self, input_query):
         route = self.route_prompt({"query": input_query})
@@ -114,6 +123,13 @@ class RouterChain:
             | StrOutputParser()
         )
         return chain.invoke(input_query)
+    
+    def execute_file_management(self, input_query):
+        # Parse and execute file management
+        return self.file_management_chain.execute(
+            input_query.get("operation"),
+            **input_query.get("parameters", {})
+        )
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -128,6 +144,8 @@ def chat():
 
     if routing_result["route"] == "system":
         return redirect(url_for('chat_system'), code=307)  # 307 preserves the POST method
+    elif routing_result["route"] == "file_management":
+        return redirect(url_for('chat_file_management'), code=307)
     else:
         return redirect(url_for('chat_chatbot'), code=307)
 
@@ -153,6 +171,20 @@ def chat_chatbot():
 
     router = RouterChain(prompt)
     response = router.execute_chatbot(prompt)
+    return jsonify({"response": response})
+
+@app.route('/chat/file_management', methods=['POST'])
+def chat_file_management():
+    data = request.get_json()
+
+    operation = data.get("operation", "")
+    parameters = data.get("parameters", {})
+
+    if not operation:
+        return jsonify({"error": "No operation provided"}), 400
+
+    router = RouterChain("File Management Prompt")
+    response = router.file_management_chain.execute(operation, **parameters)
     return jsonify({"response": response})
 
 if __name__ == '__main__':
