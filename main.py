@@ -41,19 +41,21 @@ class RouterChain:
         self.file_management_chain = FileManagementChain(prompt)
 
         self.setup_templates_and_tools()
+        self.get_templates()
 
-    def setup_templates_and_tools(self):
+    def get_templates(self):
         self.prompt_templates = [
             SystemChain(self.prompt).get_template(),
             ChatbotChain(self.prompt).get_template(),
             FileManagementChain(self.prompt).get_template()
         ]
-        self.tools_list = [
-            self.tools.turn_on_wifi_tool,
-            self.tools.list_wifi_tool,
-            self.tools.connect_wifi_tool,
-            self.tools.disconnect_wifi_tool
-        ]
+        # self.tools_list = [
+        #     self.tools.turn_on_wifi_tool,
+        #     self.tools.list_wifi_tool,
+        #     self.tools.connect_wifi_tool,
+        #     self.tools.disconnect_wifi_tool,
+        #     self.tools.list_bluetooth_tool
+        # ]
         self.prompt_embeddings = self.embeddings.embed_documents(self.prompt_templates)
 
     def route_prompt(self, input_dict):
@@ -76,6 +78,10 @@ class RouterChain:
         return {"route": route, "query": input_query}
 
     def execute_system(self, input_query):
+
+        self.tools = SystemTools()
+        self.tools_list = self.tools.return_tools()
+
         # Create and execute agent
         prompt = hub.pull("hwchase17/structured-chat-agent")
         agent = create_structured_chat_agent(
@@ -98,15 +104,15 @@ class RouterChain:
         # Process the response if it contains 'output'
         if isinstance(result, dict) and 'output' in result:
             raw_output = result['output']
-            analysis_prompt = f"""Based on the WiFi scan results:
+            analysis_prompt = f"""Based on the output from the system chain:
             {raw_output}
 
-            Please provide a clear analysis of these networks, including:
-            - Which networks have the strongest signals
-            - What the signal strengths mean for connection quality
-            - Any recommendations for the user
+            Please provide a clear analysis of the networks, including:
 
-            Present this information in a natural, helpful way."""
+            The networks with the strongest signals
+            What the signal strengths indicate about connection quality
+            Recommendations for the best network to connect to
+            Present the information in a user-friendly and helpful manner."""
 
             # Use the LLM to generate a more natural response
             analysis_response = self.llm.invoke(analysis_prompt).content
